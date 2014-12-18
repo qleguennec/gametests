@@ -10,11 +10,11 @@ import           Control.Lens
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           "GLFW-b" Graphics.UI.GLFW     as GLFW
+import           Graphics.Gloss.Data.Color
 
 data Config = Config
   { _height    :: Int
   , _width     :: Int
-  , _increment :: Float
   , _title     :: String
   }
 makeLenses ''Config
@@ -22,17 +22,24 @@ makeLenses ''Config
 data Unit = Unit
   { _x      :: Float
   , _y      :: Float
-  , _center :: Int
+  , _size   :: Float
+  , _speed  :: Float
+  , _ucolor :: Color
   }
 makeLenses ''Unit
 
 data World = World
-  { _player :: Unit
+  { _units :: [Unit]
   }
 makeLenses ''World
 
 newtype Game a = Game (ReaderT Config (StateT World IO) a)
   deriving (MonadIO, Functor, Applicative, Monad, MonadState World, MonadReader Config)
+
+-- Util
+
+io :: IO a -> Game a
+io = liftIO
 
 runGame :: Config -> World -> Game a -> IO (a, World)
 runGame c w (Game a) = runStateT (runReaderT a c) w
@@ -53,9 +60,3 @@ withWindow f = whenM (io GLFW.init) $ do
     io GLFW.terminate
     where
       simpleErrorCallback e s = putStrLn . unwords $ [show e, show s]
-
--- Util
-
--- alias for liftIO
-io :: IO a -> Game a
-io = liftIO

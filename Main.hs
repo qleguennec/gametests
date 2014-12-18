@@ -2,12 +2,13 @@
 
 module Main where
 
+import           Control.Applicative
 import           Control.Concurrent          (threadDelay)
 import           Control.Lens
 import           Control.Monad
 import           Core
 import           Data.Foldable               as F
-import           Data.Map                    as M
+import           Data.Map                    as M hiding (size)
 import           FRP.Elerea.Simple
 import           Graphics.Gloss.Data.Color
 import           Graphics.Gloss.Data.Picture
@@ -15,35 +16,32 @@ import           Graphics.Gloss.Rendering
 import           "GLFW-b" Graphics.UI.GLFW            as GLFW
 import           Logic
 import           System.Exit                 (exitSuccess)
+import Data.Traversable as T
 
 type Keymap = Map Key (Game ())
 
 defaultKeymap :: Keymap
 defaultKeymap = M.fromList
-  [ (Key'Right, movePlayer DRight)
-  , (Key'Left , movePlayer DLeft)
-  , (Key'Down , movePlayer DDown)
-  , (Key'Up   , movePlayer DUp)
+  [ (Key'Right, moveUnits DRight)
+  , (Key'Left , moveUnits DLeft )
+  , (Key'Down , moveUnits DDown )
+  , (Key'Up   , moveUnits DUp   )
   ]
 
 defaultConf :: Config
 defaultConf = Config
   { _height    = 600
   , _width     = 600
-  , _increment = 20.0
   , _title     = "test"
-  }
-
-defaultPlayer :: Unit
-defaultPlayer = Unit
-  { _x      = 0
-  , _y      = 0
-  , _center = 27
   }
 
 defaultWorld :: World
 defaultWorld = World
-  { _player = defaultPlayer
+  { _units =
+      [ Unit 0 (-100) 10 4 blue
+      , Unit 0 100 30 3.5 white
+      , Unit 50 50 20 15 green
+      ]
   }
 
 main :: IO ()
@@ -54,7 +52,7 @@ main = do
       -- Signal network initialization
       (netw, snk) <- io $ do
         (smp, snk) <- external M.empty
-        netw <- start (return smp)
+        netw <- start $ return smp
         return (netw, snk)
 
       -- glossState initialization
@@ -66,7 +64,7 @@ main = do
 
   where
     loop window (netw, snk) glossState = forever $ do
-      io $ threadDelay 10
+      io $ threadDelay 1000
 
       -- Read signals, sample them and sequence them
       io $ readInput window snk
@@ -79,7 +77,6 @@ main = do
     readInput :: GLFW.Window -> (Map Key (Game ()) -> IO ()) -> IO ()
     readInput window snk = do
       pollEvents
-
       -- todo: dedicated optimized function
       keysPressed <- filterM (keyIsPressed window) . keys $ defaultKeymap
       snk . M.filterWithKey (\k _ -> F.elem k keysPressed)
@@ -88,14 +85,17 @@ main = do
     renderFrame window glossState = do
       w <- view width
       h <- view height
-      p <- use player
-      io $ displayPicture (w, h) black glossState 1.0
-          $ Pictures [Color red $ translate (p^.x) (p^.y)
-            $ circle (fromIntegral $ p^.center)]
+      u <- use units
+      io . displayPicture (w, h) black glossState 1.0 . Pictures
+         $ T.fmapDefault displayUnit u
       io $ swapBuffers window
 
+    displayUnit u = Color (u^.ucolor)
+      $ translate (u^.x) (u^.y)
+      $ circle (u^.size)
+
 keyIsPressed :: Window -> Key -> IO Bool
-keyIsPressed win key = isPress `fmap` GLFW.getKey win key
+keyIsPressed win key = isPress <$> GLFW.getKey win key
 
 isPress :: KeyState -> Bool
 isPress KeyState'Pressed   = True
