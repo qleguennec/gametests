@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -9,13 +10,15 @@ import           Control.Cond
 import           Control.Lens
 import           Control.Monad.Reader
 import           Control.Monad.State
-import           "GLFW-b" Graphics.UI.GLFW     as GLFW
+import           Control.Monad.Writer
+import           Criterion.Measurement     as Bench (getTime)
 import           Graphics.Gloss.Data.Color
+import           "GLFW-b" Graphics.UI.GLFW          as GLFW
 
 data Config = Config
-  { _height    :: Int
-  , _width     :: Int
-  , _title     :: String
+  { _height :: Int
+  , _width  :: Int
+  , _title  :: String
   }
 makeLenses ''Config
 
@@ -33,16 +36,41 @@ data World = World
   }
 makeLenses ''World
 
-newtype Game a = Game (ReaderT Config (StateT World IO) a)
-  deriving (MonadIO, Functor, Applicative, Monad, MonadState World, MonadReader Config)
+data Log = Log
+  { bfTime :: Double
+  , frames :: Int
+  }
+
+instance Monoid Log where
+  mempty = Log 0 0
+  (Log t f) `mappend` (Log t' f') = Log (t+t') (f+f')
+
+
+newtype Game a =
+  Game (ReaderT Config (StateT World (WriterT Log IO)) a) deriving
+      ( MonadIO
+      , Functor
+      , Applicative
+      , Monad
+      , MonadState World
+      , MonadReader Config
+      , MonadWriter Log
+      )
 
 -- Util
 
 io :: IO a -> Game a
 io = liftIO
 
-runGame :: Config -> World -> Game a -> IO (a, World)
-runGame c w (Game a) = runStateT (runReaderT a c) w
+execTime :: Game a -> Game (a, Double)
+execTime g = do
+  !t <- io Bench.getTime
+  !a <- g
+  !t' <- io Bench.getTime
+  return (a, t'-t)
+
+runGame :: Config -> World -> Game a -> IO Log
+runGame c w (Game a) = execWriterT $ runStateT (runReaderT a c) w
 
 withWindow :: (GLFW.Window -> Game ()) -> Game ()
 withWindow f = whenM (io GLFW.init) $ do

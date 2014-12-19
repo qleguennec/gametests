@@ -1,22 +1,24 @@
+{-# LANGUAGE BangPatterns   #-}
 {-# LANGUAGE PackageImports #-}
 
 module Main where
 
 import           Control.Applicative
-import           Control.Concurrent          (threadDelay)
+import           Control.Cond
 import           Control.Lens
 import           Control.Monad
+import           Control.Monad.Writer
 import           Core
+import           Criterion.Measurement       (initializeTime)
 import           Data.Foldable               as F
 import           Data.Map                    as M hiding (size)
+import           Data.Traversable            as T
 import           FRP.Elerea.Simple
 import           Graphics.Gloss.Data.Color
 import           Graphics.Gloss.Data.Picture
 import           Graphics.Gloss.Rendering
 import           "GLFW-b" Graphics.UI.GLFW            as GLFW
 import           Logic
-import           System.Exit                 (exitSuccess)
-import Data.Traversable as T
 
 type Keymap = Map Key (Game ())
 
@@ -45,34 +47,35 @@ defaultWorld = World
   }
 
 main :: IO ()
-main = do
-  _ <- runGame defaultConf defaultWorld
-    $ withWindow
+main = displayLog =<<
+  runGame defaultConf defaultWorld
+    (withWindow
     $ \w -> do
       -- Signal network initialization
-      (netw, snk) <- io $ do
+      !(netw, snk) <- io $ do
         (smp, snk) <- external M.empty
         netw <- start $ return smp
         return (netw, snk)
 
       -- glossState initialization
-      glossState <- io initState
+      !glossState <- io initState
 
       -- begin of the loop
+      io initializeTime
       loop w (netw, snk) glossState
-  exitSuccess
+  )
 
   where
-    loop window (netw, snk) glossState = forever $ do
-      io $ threadDelay 1000
-
-      -- Read signals, sample them and sequence them
+    loop window (netw, snk) glossState = do
+      -- Read signals, sample them and sequence them, then process output
       io $ readInput window snk
-      inputs <- io netw
-      F.sequence_ inputs
+      !inputs <- io netw
 
-      -- render and display frame
-      renderFrame window glossState
+      !(_, t) <- execTime $ process window glossState inputs
+      tell $ Log t 1
+      ifM (io $ keyIsPressed window Key'Escape)
+          (return ())
+          (loop window (netw, snk) glossState)
 
     readInput :: GLFW.Window -> (Map Key (Game ()) -> IO ()) -> IO ()
     readInput window snk = do
@@ -81,6 +84,10 @@ main = do
       keysPressed <- filterM (keyIsPressed window) . keys $ defaultKeymap
       snk . M.filterWithKey (\k _ -> F.elem k keysPressed)
         $ defaultKeymap
+
+    process window glossState inputs = do
+      F.sequence_ inputs
+      renderFrame window glossState
 
     renderFrame window glossState = do
       w <- view width
@@ -93,6 +100,12 @@ main = do
     displayUnit u = Color (u^.ucolor)
       $ translate (u^.x) (u^.y)
       $ circle (u^.size)
+
+displayLog :: Log -> IO ()
+displayLog (Log t f) = do
+  print $ "frames displayed: " ++ show f
+  print $ "time beetween frames: " ++ show t
+  print $ "average fps: " ++ show (1/(t/fromIntegral f))
 
 keyIsPressed :: Window -> Key -> IO Bool
 keyIsPressed win key = isPress <$> GLFW.getKey win key
