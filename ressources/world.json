@@ -1,10 +1,35 @@
 {
-  "units": [
+  "units":
+  [
+    { "type": "Player"
+      , "x": 0
+      , "y": 0
+      , "size": 50
+      , "speed": 30
+      , "sprites": [
+          {"type": "SFace" , "src": "player-face.png"}
+        , {"type": "SLeft" , "src": "player-left.png"}
+        , {"type": "SRight", "src": "player-right.png"}
+      ]
+    },
+
     { "type": "Player"
       , "x": 0
       , "y": 0
       , "size": 10
       , "speed": 10
+      , "sprites": [
+          {"type": "SFace" , "src": "player-face.png"}
+        , {"type": "SLeft" , "src": "player-left.png"}
+        , {"type": "SRight", "src": "player-right.png"}
+      ]
+    },
+
+    { "type": "Player"
+      , "x": 0
+      , "y": 0
+      , "size": 30
+      , "speed": 18
       , "sprites": [
           {"type": "SFace" , "src": "player-face.png"}
         , {"type": "SLeft" , "src": "player-left.png"}

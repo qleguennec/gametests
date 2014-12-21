@@ -23,6 +23,7 @@ import           Data.Traversable            as T
 import           Data.Vector                 as V (toList)
 import           Graphics.Gloss.Data.Picture
 import qualified "GLFW-b" Graphics.UI.GLFW            as GLFW
+import Data.Text as Txt (unpack)
 
 data Config = Config
   { _height :: Int
@@ -59,11 +60,18 @@ makeLenses ''World
 data Log = Log
   { bfTime :: Double
   , frames :: Int
-  } deriving (Eq, Show, Read)
+  } deriving (Eq, Read)
 
 instance Monoid Log where
   mempty = Log 0 0
   (Log t f) `mappend` (Log t' f') = Log (t+t') (f+f')
+
+instance Show Log where
+  show (Log t f) = unlines
+    [ "frames displayed: " ++ show f
+    , "time beetween frames: " ++ show t
+    , "average fps: " ++ show (1/(t/fromIntegral f))
+    ]
 
 
 newtype Game a =
@@ -128,9 +136,9 @@ instance FromJSON SpritesPaths where
   parseJSON _ = fail "Sprites parsing failed"
 
 instance FromJSON UnitType where
-  parseJSON (String s) = return . read . show $ s
-  parseJSON _ = fail "UnitType parsing failed"
+  parseJSON = withText "UnitType parsing failed"
+    (return . read . Txt.unpack)
 
 instance FromJSON SpriteType where
-  parseJSON (String s) = return . read . show $ s
-  parseJSON _ = fail "SpriteType parsing failed"
+  parseJSON = withText "SpriteType parsing failed"
+    (return . read . Txt.unpack)

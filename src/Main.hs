@@ -11,18 +11,20 @@ import           Control.Monad
 import           Control.Monad.Writer
 import           Core
 import           Criterion.Measurement       (initializeTime)
-import           Data.Aeson (eitherDecode)
+import           Data.Aeson                  (eitherDecode')
+import qualified Data.ByteString.Char8       as C
 import qualified Data.ByteString.Lazy        as BS
 import qualified Data.Foldable               as F
 import qualified Data.Map                    as M hiding (size)
+import           Data.Maybe                  (fromMaybe)
 import qualified Data.Traversable            as T
 import           FRP.Elerea.Simple
 import           Graphics.Gloss.Data.Color
 import           Graphics.Gloss.Data.Picture
+import           Graphics.Gloss.Juicy
 import           Graphics.Gloss.Rendering
 import           "GLFW-b" Graphics.UI.GLFW            as GLFW
 import           Logic
-import qualified Data.ByteString.Char8       as C
 
 type Keymap = M.Map Key (Game ())
 
@@ -42,7 +44,7 @@ defaultConf = Config
   }
 
 main :: IO ()
-main = liftM eitherDecode (BS.readFile "ressources/world.json")
+main = liftM eitherDecode' (BS.readFile "ressources/world.json")
   >>= \case
   (Right world) ->
     runGame defaultConf world
@@ -56,7 +58,6 @@ main = liftM eitherDecode (BS.readFile "ressources/world.json")
 
         -- glossState initialization
         !glossState <- io initState
-
         -- units initialization
         !initUnits <- use units >>= T.traverse (\u ->
           case u^.sprites of
@@ -67,7 +68,8 @@ main = liftM eitherDecode (BS.readFile "ressources/world.json")
 
         -- begin of the loop
         io initializeTime
-        loop w (netw, snk) glossState) >>= displayLog
+        loop w (netw, snk) glossState)
+      >>= print
   (Left e) -> putStrLn e
 
   where
@@ -76,8 +78,11 @@ main = liftM eitherDecode (BS.readFile "ressources/world.json")
       io $ readInput window snk
       !inputs <- io netw
 
+      -- record output rendering execution time
       !(_, t) <- execTime $ process window glossState inputs
       tell $ Log t 1
+
+      -- loop again
       ifM (io $ keyIsPressed window Key'Escape)
           (return ())
           (loop window (netw, snk) glossState)
@@ -107,13 +112,9 @@ main = liftM eitherDecode (BS.readFile "ressources/world.json")
       $ circle (u^.size)
 
     initSprites :: SpritesPaths -> IO LoadedSprites
-    initSprites = traverse (loadBMP . C.unpack)
-
-displayLog :: Log -> IO ()
-displayLog (Log t f) = do
-  print $ "frames displayed: " ++ show f
-  print $ "time beetween frames: " ++ show t
-  print $ "average fps: " ++ show (1/(t/fromIntegral f))
+    initSprites = traverse
+      (\a -> fromMaybe blank <$>
+        (loadJuicyPNG . (++) "ressources/img/" . C.unpack) a)
 
 keyIsPressed :: Window -> Key -> IO Bool
 keyIsPressed win key = isPress <$> GLFW.getKey win key
